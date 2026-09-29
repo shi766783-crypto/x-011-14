@@ -39,5 +39,21 @@ export const usePlansStore = defineStore('plans', () => {
     persist()
   }
 
-  return { plans, addPlan, updatePlan, removePlan, toggleComplete }
+  /** 归档（仅隐藏）；是否允许归档由界面按「已完成」状态把关 */
+  function archivePlan(id: string): void {
+    const target = plans.value.find((p) => p.id === id)
+    if (!target || target.archivedAt) return
+    target.archivedAt = new Date().toISOString()
+    persist()
+  }
+
+  /** 从归档区恢复，保留完成状态与所有数据 */
+  function unarchivePlan(id: string): void {
+    const target = plans.value.find((p) => p.id === id)
+    if (!target) return
+    target.archivedAt = undefined
+    persist()
+  }
+
+  return { plans, addPlan, updatePlan, removePlan, toggleComplete, archivePlan, unarchivePlan }
 })

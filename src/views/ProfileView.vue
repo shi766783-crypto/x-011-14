@@ -17,10 +17,13 @@ const achievementsStore = useAchievementsStore()
 const stats = computed(() => statsStore.stats)
 
 const recentPlans = computed(() =>
-  plansStore.plans.slice(0, 5).map((plan) => ({
-    plan,
-    progress: computePlanProgress(plan, logsStore.logs),
-  })),
+  plansStore.plans
+    .filter((plan) => !plan.archivedAt)
+    .slice(0, 5)
+    .map((plan) => ({
+      plan,
+      progress: computePlanProgress(plan, logsStore.logs),
+    })),
 )
 
 const recentLogs = computed(() => logsStore.logs.slice(0, 5))

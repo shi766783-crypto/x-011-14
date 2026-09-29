@@ -9,6 +9,7 @@ import { today } from '@/utils/date'
 import { uid } from '@/utils/id'
 import { useLogsStore } from '@/stores/logs'
 import { usePlansStore } from '@/stores/plans'
+import PlanCard from '@/components/PlanCard.vue'
 
 const plansStore = usePlansStore()
 const logsStore = useLogsStore()
@@ -16,6 +17,7 @@ const logsStore = useLogsStore()
 const dialogVisible = ref(false)
 const editingId = ref<string | null>(null)
 const formRef = ref<FormInstance>()
+const archiveExpanded = ref(false)
 
 const emptyForm = (): {
   name: string
@@ -47,19 +49,24 @@ const rules: FormRules = {
   dailyHours: [{ required: true, message: '请输入每日学习时长', trigger: 'blur' }],
 }
 
-const planViews = computed(() =>
-  plansStore.plans.map((plan) => ({
-    plan,
-    progress: computePlanProgress(plan, logsStore.logs),
-  })),
+const activeViews = computed(() =>
+  plansStore.plans
+    .filter((plan) => !plan.archivedAt)
+    .map((plan) => ({
+      plan,
+      progress: computePlanProgress(plan, logsStore.logs),
+    })),
 )
 
-const statusTagType: Record<string, 'info' | 'success' | 'danger' | 'primary'> = {
-  未开始: 'info',
-  进行中: 'primary',
-  已完成: 'success',
-  已逾期: 'danger',
-}
+const archivedViews = computed(() =>
+  plansStore.plans
+    .filter((plan) => plan.archivedAt)
+    .sort((a, b) => (a.archivedAt! < b.archivedAt! ? 1 : -1))
+    .map((plan) => ({
+      plan,
+      progress: computePlanProgress(plan, logsStore.logs),
+    })),
+)
 
 function openCreate(): void {
   editingId.value = null
@@ -117,6 +124,16 @@ function removePlan(plan: StudyPlan): void {
   plansStore.removePlan(plan.id)
   ElMessage.success('计划已删除')
 }
+
+function archivePlan(id: string): void {
+  plansStore.archivePlan(id)
+  ElMessage.success('已归档，可在下方归档区查看或恢复')
+}
+
+function unarchivePlan(id: string): void {
+  plansStore.unarchivePlan(id)
+  ElMessage.success('已恢复到计划列表')
+}
 </script>
 
 <template>
@@ -126,64 +143,50 @@ function removePlan(plan: StudyPlan): void {
       <el-button type="primary" @click="openCreate">新建计划</el-button>
     </div>
 
-    <el-empty v-if="planViews.length === 0" description="还没有学习计划，点击右上角新建" />
+    <el-empty
+      v-if="activeViews.length === 0 && archivedViews.length === 0"
+      description="还没有学习计划，点击右上角新建"
+    />
 
-    <div class="plan-list">
-      <el-card v-for="{ plan, progress } in planViews" :key="plan.id" class="plan-card" shadow="hover">
-        <div class="plan-head">
-          <div class="plan-title">
-            <span class="plan-name">{{ plan.name }}</span>
-            <el-tag size="small" :type="statusTagType[progress.status]">{{ progress.status }}</el-tag>
-          </div>
-          <el-tag size="small" effect="plain">{{ plan.domain }}</el-tag>
-        </div>
+    <template v-else>
+      <el-empty
+        v-if="activeViews.length === 0"
+        description="暂无进行中或未开始的计划"
+      />
 
-        <p class="plan-goal">{{ plan.goal || '暂无目标描述' }}</p>
-
-        <el-progress
-          :percentage="progress.percent"
-          :status="progress.status === '已逾期' ? 'exception' : progress.status === '已完成' ? 'success' : undefined"
-          :stroke-width="12"
+      <div v-else class="plan-list">
+        <PlanCard
+          v-for="{ plan, progress } in activeViews"
+          :key="plan.id"
+          :plan="plan"
+          :progress="progress"
+          @edit="openEdit"
+          @remove="removePlan"
+          @toggle-complete="plansStore.toggleComplete"
+          @archive="archivePlan"
         />
+      </div>
 
-        <div class="plan-meta">
-          <span>已过 {{ progress.elapsedDays }} 天</span>
-          <span>剩余 {{ progress.remainingDays }} 天</span>
-          <span>应完成 {{ progress.shouldHours }}h</span>
-          <span>实际 {{ progress.actualHours }}h / {{ plan.totalHours }}h</span>
-        </div>
-
-        <div class="plan-resources" v-if="plan.resources.length">
-          <el-link
-            v-for="r in plan.resources"
-            :key="r.id"
-            type="primary"
-            :href="r.link || undefined"
-            :target="r.link ? '_blank' : undefined"
-            class="resource-link"
-          >
-            {{ r.name }}
-          </el-link>
-        </div>
-
-        <div class="plan-actions">
-          <el-button size="small" @click="openEdit(plan)">编辑</el-button>
-          <el-button
-            v-if="progress.status !== '已完成'"
-            size="small"
-            type="success"
-            @click="plansStore.toggleComplete(plan.id)"
-          >
-            标记完成
-          </el-button>
-          <el-popconfirm title="确定删除该计划？" @confirm="removePlan(plan)">
-            <template #reference>
-              <el-button size="small" type="danger">删除</el-button>
-            </template>
-          </el-popconfirm>
-        </div>
-      </el-card>
-    </div>
+      <div v-if="archivedViews.length" class="archive-section">
+        <button type="button" class="archive-toggle" @click="archiveExpanded = !archiveExpanded">
+          <span class="archive-caret" :class="{ 'is-open': archiveExpanded }"></span>
+          已归档计划（{{ archivedViews.length }}）
+        </button>
+        <el-collapse-transition>
+          <div v-show="archiveExpanded" class="plan-list archive-list">
+            <PlanCard
+              v-for="{ plan, progress } in archivedViews"
+              :key="plan.id"
+              :plan="plan"
+              :progress="progress"
+              archived
+              @remove="removePlan"
+              @unarchive="unarchivePlan"
+            />
+          </div>
+        </el-collapse-transition>
+      </div>
+    </template>
 
     <el-dialog
       v-model="dialogVisible"
@@ -243,56 +246,44 @@ function removePlan(plan: StudyPlan): void {
   gap: 16px;
 }
 
-.plan-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
+.archive-section {
+  margin-top: 24px;
+  border-top: 1px solid #ebeef5;
+  padding-top: 16px;
 }
 
-.plan-title {
-  display: flex;
+.archive-toggle {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.plan-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1f2d3d;
-}
-
-.plan-goal {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 14px;
   color: #606266;
-  font-size: 13px;
-  min-height: 36px;
-  margin: 8px 0 12px;
+  cursor: pointer;
+  margin-bottom: 16px;
 }
 
-.plan-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  font-size: 12px;
-  color: #909399;
-  margin-top: 10px;
+.archive-toggle:hover {
+  color: #409eff;
 }
 
-.plan-resources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+.archive-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid #909399;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform 0.2s ease;
 }
 
-.resource-link {
-  font-size: 12px;
+.archive-caret.is-open {
+  transform: rotate(90deg);
 }
 
-.plan-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 14px;
+.archive-list {
+  margin-top: 4px;
 }
 
 .resource-editor {

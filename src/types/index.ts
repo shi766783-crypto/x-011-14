@@ -34,6 +34,8 @@ export interface StudyPlan {
   createdAt: string
   /** 手动标记完成的时间；为空表示未手动完成 */
   completedAt?: string
+  /** 归档时间；非空表示已归档（仅在列表中隐藏，不影响统计与成就） */
+  archivedAt?: string
 }
 
 /** 掌握程度（1-5 星） */
@@ -132,6 +134,6 @@ export interface TrendPoint {
 }
 
 /** 实体创建输入（去除由系统生成的字段） */
-export type PlanInput = Omit<StudyPlan, 'id' | 'createdAt' | 'completedAt'>
+export type PlanInput = Omit<StudyPlan, 'id' | 'createdAt' | 'completedAt' | 'archivedAt'>
 export type LogInput = Omit<StudyLog, 'id' | 'createdAt'>
 export type CardInput = Omit<KnowledgeCard, 'id' | 'createdAt' | 'reviewCount' | 'lastReviewedAt'>
